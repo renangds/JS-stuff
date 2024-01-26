@@ -1,12 +1,31 @@
 
-function transform(sql = "", binds = [ { variable: "", value: "" } ]) {
-    const test = handleJson(binds);
-    let buffer = sql;
+const FORBIDDEN_KEY_PATTERN = /[.*+?^${}()|\-,@1-9[\]\\]/g;
+const BIND_PATTERN = /[:]\w+[\s+]?/g;
+const END_BIND_PATTERN = /[,\s+?|\s+|\Z|()]/g;
 
-    for (const [key, value] of Object.entries(test)) {
-        const pattern = ":" + key;
-        const parsedValue = matchTypeAndParse(value);
-        buffer = buffer.replace(pattern, parsedValue);
+function transform(sql = "", binds = [ { variable: "", value: "" } ]) {
+    const json = handleJson(binds);
+    let buffer = "";
+    let begin = 0;
+    let flag = false;
+
+    for (let index = 0; index <= sql.length; index++) {
+        if (!flag && sql.charAt(index).match(":")) {
+            begin = index + 1;
+            flag = true;
+        }
+
+        if (flag && (sql.charAt(index).match(END_BIND_PATTERN) || index === sql.length)) {
+            flag = false;
+
+            const property = sql.substring(begin, index);
+            const value = matchTypeAndParse(json[property]);
+            buffer += value;
+        }
+
+        if (!flag) {
+            buffer += sql.charAt(index);
+        }
     }
 
     return buffer;
@@ -26,12 +45,10 @@ function handleJson(binds = [ { variable: "", value: "" } ]) {
             };
         }
 
-        const obj = {
+        return {
             ...prev,
             [variable]: value
         };
-
-        return obj;
     }, []);
 }
 
@@ -61,28 +78,30 @@ function matchTypeAndParse(value) {
     return 'NULL';
 }
 
-const FORBIDDEN_KEY_PATTERN = /[.*+?^${}()|\-,@1-9[\]\\]/g;
-const BIND_PATTERN = /[:]\w+[\s+|,]?/g;
-
 (function () {
     const sql = "select * from table_test a where a.age = :age and a.name like :name";
-    const binds = [{ 
-        variable: "name",
-        value: "Renan"
-    },
-    { 
-        variable: "age",
-        value: "25"
-    },{
-        variable: "year",
-        value: "1992"
-    },
-    {
-        variable: "ye@r",
-        value: "1992"
-    }
-];
+    const sql2 = "insert into table (name, age, year) values (:name, :age, :year)";
+    const sql3 = "delete from table when value = :year"
+    const binds = [
+        { 
+            variable: "name",
+            value: "Renan"
+        },
+        { 
+            variable: "age",
+            value: "25"
+        },
+        {
+            variable: "year",
+            value: "1992"
+        },
+        {
+            variable: "ye@r",
+            value: "1992"
+        }
+    ];
 
-    const _sql = transform(sql, binds);
+    const _sql = transform(sql + "\n" + sql2 + "\n" + sql3, binds);
+    console.log("oi");
     console.log(_sql)
 })();
